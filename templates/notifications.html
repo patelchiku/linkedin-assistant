@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h5 class="fw-bold mb-4">Notifications</h5>
+
+<div class="row g-4">
+  <div class="col-12 col-md-5">
+    <div class="card p-4">
+      <h6 class="fw-bold mb-3"><i class="bi bi-bell me-1 text-primary"></i>Add Notification</h6>
+      <form method="post" action="{{ url_for('add_notification_route') }}">
+        <div class="row g-2 mb-2">
+          <div class="col-6">
+            <input type="text" name="first_name" class="form-control" placeholder="First Name" required>
+          </div>
+          <div class="col-6">
+            <input type="text" name="last_name" class="form-control" placeholder="Last Name" required>
+          </div>
+        </div>
+        <input type="url" name="linkedin_url" class="form-control mb-2"
+               placeholder="LinkedIn URL (optional)">
+        <select name="event_type" class="form-select mb-3">
+          <option value="birthday">🎂 Birthday</option>
+          <option value="work_anniversary">🎉 Work Anniversary</option>
+          <option value="new_job">💼 New Job</option>
+          <option value="promotion">🚀 Promotion</option>
+        </select>
+        <button type="submit" class="btn btn-primary w-100">
+          <i class="bi bi-magic me-1"></i>Draft Message
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <div class="col-12 col-md-7">
+    <h6 class="fw-bold mb-3">
+      Pending Messages
+      {% if notifications %}
+      <span class="badge bg-primary rounded-pill ms-1">{{ notifications|length }}</span>
+      {% endif %}
+    </h6>
+
+    {% if not notifications %}
+    <div class="card p-4 text-center text-muted">
+      <i class="bi bi-bell-slash fs-2 mb-2 d-block"></i>
+      <p class="mb-0">No pending notifications.</p>
+    </div>
+    {% else %}
+    <div class="d-flex flex-column gap-3">
+      {% for n in notifications %}
+      <div class="card p-3">
+        <div class="d-flex justify-content-between align-items-start mb-2">
+          <div>
+            <h6 class="fw-bold mb-1">{{ n.first_name }} {{ n.last_name }}</h6>
+            <span class="badge badge-event px-2 py-1" style="font-size:.75rem;">
+              {{ n.event_type.replace('_', ' ').title() }}
+            </span>
+          </div>
+          {% if n.linkedin_url %}
+          <a href="{{ n.linkedin_url }}" target="_blank" class="btn btn-outline-primary btn-sm">
+            <i class="bi bi-linkedin me-1"></i>Open
+          </a>
+          {% endif %}
+        </div>
+
+        <div class="msg-box mb-3">{{ n.drafted_message }}</div>
+
+        <div class="d-flex gap-2 flex-wrap">
+          <button class="btn btn-outline-secondary btn-sm"
+                  onclick="copyMsg({{ n.drafted_message|tojson }}, this)">
+            <i class="bi bi-clipboard me-1"></i>Copy
+          </button>
+          <form method="post" action="{{ url_for('regenerate_message') }}">
+            <input type="hidden" name="notif_id" value="{{ n.id }}">
+            <input type="hidden" name="first_name" value="{{ n.first_name }}">
+            <input type="hidden" name="event_type" value="{{ n.event_type }}">
+            <button type="submit" class="btn btn-outline-secondary btn-sm">
+              <i class="bi bi-arrow-repeat me-1"></i>Regenerate
+            </button>
+          </form>
+          <form method="post" action="{{ url_for('mark_notification_done_route') }}">
+            <input type="hidden" name="notif_id" value="{{ n.id }}">
+            <button type="submit" class="btn btn-success btn-sm">
+              <i class="bi bi-check2 me-1"></i>Done
+            </button>
+          </form>
+          <form method="post" action="{{ url_for('delete_notification_route') }}">
+            <input type="hidden" name="notif_id" value="{{ n.id }}">
+            <button type="submit" class="btn btn-outline-danger btn-sm">
+              <i class="bi bi-trash"></i>
+            </button>
+          </form>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}

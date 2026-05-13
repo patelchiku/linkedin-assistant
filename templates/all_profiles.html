@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h5 class="fw-bold mb-0">All Profiles</h5>
+  <span class="badge bg-primary rounded-pill">{{ profiles|length }} total</span>
+</div>
+
+{% if not profiles %}
+<div class="card p-5 text-center text-muted">
+  <i class="bi bi-people fs-1 mb-2 d-block"></i>
+  <p class="mb-2">No profiles yet.</p>
+  <a href="{{ url_for('add_profiles') }}" class="btn btn-primary btn-sm mx-auto" style="width:fit-content">Add Profiles</a>
+</div>
+{% else %}
+<div class="card">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Name</th>
+          <th class="d-none d-md-table-cell">Note</th>
+          <th>Status</th>
+          <th class="d-none d-md-table-cell">Added</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in profiles %}
+        <tr>
+          <td>
+            <a href="{{ p.linkedin_url }}" target="_blank" class="text-decoration-none fw-medium text-dark">
+              {{ p.first_name }} {{ p.last_name }}
+              <i class="bi bi-box-arrow-up-right ms-1 small text-muted"></i>
+            </a>
+          </td>
+          <td class="text-muted small d-none d-md-table-cell">{{ p.note or '—' }}</td>
+          <td>
+            {% if p.status == 'sent' %}
+            <span class="badge badge-sent px-2 py-1">Sent</span>
+            {% else %}
+            <span class="badge badge-pending px-2 py-1">Pending</span>
+            {% endif %}
+          </td>
+          <td class="text-muted small d-none d-md-table-cell">{{ p.added_on }}</td>
+          <td>
+            <form method="post" action="{{ url_for('delete_profile_route') }}"
+                  onsubmit="return confirm('Delete {{ p.first_name }} {{ p.last_name }}?')">
+              <input type="hidden" name="profile_id" value="{{ p.id }}">
+              <button type="submit" class="btn btn-sm btn-outline-danger">
+                <i class="bi bi-trash"></i>
+              </button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}

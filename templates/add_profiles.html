@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h5 class="fw-bold mb-4">Add Profiles</h5>
+
+<div class="row g-4">
+  <div class="col-12 col-md-6">
+    <div class="card p-4">
+      <h6 class="fw-bold mb-3"><i class="bi bi-person-plus me-1 text-primary"></i>Add Single Profile</h6>
+      <form method="post" action="{{ url_for('add_profile_route') }}">
+        <div class="row g-2 mb-2">
+          <div class="col-6">
+            <input type="text" name="first_name" class="form-control" placeholder="First Name" required>
+          </div>
+          <div class="col-6">
+            <input type="text" name="last_name" class="form-control" placeholder="Last Name" required>
+          </div>
+        </div>
+        <input type="url" name="linkedin_url" class="form-control mb-2"
+               placeholder="https://linkedin.com/in/username" required>
+        <textarea name="note" class="form-control mb-3" rows="2"
+                  placeholder="Note (optional) — e.g. works in fintech, Mumbai"></textarea>
+        <button type="submit" class="btn btn-primary w-100">
+          <i class="bi bi-plus-circle me-1"></i>Add Profile
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <div class="col-12 col-md-6">
+    <div class="card p-4">
+      <h6 class="fw-bold mb-3"><i class="bi bi-upload me-1 text-primary"></i>Bulk Import via CSV</h6>
+      <p class="text-muted small mb-3">
+        CSV must have columns: <code>first_name</code>, <code>last_name</code>,
+        <code>linkedin_url</code>, <code>note</code> (optional)
+      </p>
+      <form method="post" action="{{ url_for('bulk_upload') }}" enctype="multipart/form-data">
+        <input type="file" name="csv_file" accept=".csv" class="form-control mb-3" required>
+        <button type="submit" class="btn btn-primary w-100 mb-2">
+          <i class="bi bi-upload me-1"></i>Upload &amp; Import
+        </button>
+      </form>
+      <a href="{{ url_for('download_sample') }}" class="btn btn-outline-secondary w-100">
+        <i class="bi bi-download me-1"></i>Download Sample CSV
+      </a>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
