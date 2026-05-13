@@ -10,12 +10,13 @@ from flask import (Flask, render_template, request, redirect,
 
 from database import (
     init_db, build_todays_queue, get_todays_queue, mark_queue_done,
-    add_profile, manager_distribute_contacts, get_all_profiles, delete_profile,
+    add_profile, add_contacts_to_user, get_all_profiles, delete_profile,
     add_notification, get_pending_notifications, mark_notification_done,
     delete_notification, update_notification_message, get_stats,
     verify_login, get_user_by_id,
     get_team_today_stats, get_team_week_chart_data,
     get_daily_report, get_period_stats,
+    get_all_salespersons,
 )
 from templates import generate_event_message
 
@@ -174,17 +175,36 @@ def delete_notification_route():
 @app.route('/manager/upload', methods=['GET', 'POST'])
 @manager_only
 def manager_upload():
+    salespersons = get_all_salespersons()
+    team_stats   = get_team_today_stats()
+
     if request.method == 'POST':
-        file = request.files.get('csv_file')
-        if file and file.filename:
+        try:
+            assign_to_id = int(request.form['assign_to'])
+            file = request.files.get('csv_file')
+            if not file or not file.filename:
+                flash('Please select a CSV file.', 'warning')
+                return redirect(url_for('manager_upload'))
+
             df = pd.read_csv(file)
             df.columns = [c.lower().strip() for c in df.columns]
-            assigned, skipped = manager_distribute_contacts(df.to_dict('records'))
-            total = sum(assigned.values())
-            breakdown = ', '.join(f'{name} → {cnt}' for name, cnt in assigned.items())
-            flash(f'Distributed {total} contacts: {breakdown}. {skipped} duplicates skipped.', 'success')
+            df = df.fillna('')          # ← fixes NaN → 'nan' string bug
+
+            added, skipped = add_contacts_to_user(assign_to_id, df.to_dict('records'))
+            sp_name = next((sp['name'] for sp in salespersons if sp['id'] == assign_to_id), 'Unknown')
+            flash(
+                f'Added {added} contacts to {sp_name}.'
+                f'{" " + str(skipped) + " skipped (duplicates or missing data)." if skipped else ""}',
+                'success' if added else 'warning',
+            )
+        except Exception as e:
+            flash(f'Upload failed: {e}', 'danger')
+
         return redirect(url_for('manager_upload'))
-    return render_template('manager_upload.html')
+
+    return render_template('manager_upload.html',
+                           salespersons=salespersons,
+                           team_stats=team_stats)
 
 
 @app.route('/manager/download-sample')

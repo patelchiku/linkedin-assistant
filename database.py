@@ -141,44 +141,40 @@ def add_profile(user_id, first_name, last_name, linkedin_url, note="", source=""
         conn.close()
 
 
-def manager_distribute_contacts(rows):
-    """Round-robin distribute uploaded contacts across all salespersons."""
-    salespersons = get_all_salespersons()
-    if not salespersons:
-        return {}, len(rows)
-
-    n = len(salespersons)
-    assigned = {sp['name']: 0 for sp in salespersons}
-    skipped = 0
-    idx = 0
-
+def add_contacts_to_user(user_id, rows):
+    """Add a list of contact dicts to a specific user. Returns (added, skipped)."""
+    added, skipped = 0, 0
     conn = get_conn()
+
     for r in rows:
-        first_name = str(r.get('first_name', '')).strip()
-        last_name  = str(r.get('last_name', '')).strip()
-        linkedin_url = str(r.get('linkedin_url', '')).strip()
-        source = str(r.get('source', '')).strip()
+        # Guard against pandas NaN leaking in as float
+        first_name   = str(r.get('first_name',   '') or '').strip()
+        last_name    = str(r.get('last_name',    '') or '').strip()
+        linkedin_url = str(r.get('linkedin_url', '') or '').strip()
+        source       = str(r.get('source',       '') or '').strip()
 
         if not first_name or not linkedin_url:
             skipped += 1
             continue
 
-        sp = salespersons[idx % n]
         try:
             c = conn.cursor()
             c.execute(
-                "INSERT INTO profiles (user_id, first_name, last_name, linkedin_url, source) VALUES (%s, %s, %s, %s, %s)",
-                (sp['id'], first_name, last_name, linkedin_url, source),
+                "INSERT INTO profiles (user_id, first_name, last_name, linkedin_url, source)"
+                " VALUES (%s, %s, %s, %s, %s)",
+                (user_id, first_name, last_name, linkedin_url, source),
             )
             conn.commit()
-            assigned[sp['name']] += 1
-            idx += 1
+            added += 1
         except psycopg2.errors.UniqueViolation:
+            conn.rollback()
+            skipped += 1
+        except Exception:
             conn.rollback()
             skipped += 1
 
     conn.close()
-    return assigned, skipped
+    return added, skipped
 
 
 def get_pending_profiles(user_id):
