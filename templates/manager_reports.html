@@ -1,0 +1,442 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <div>
+    <h5 class="fw-bold mb-0">Reports</h5>
+    <p class="text-muted small mb-0">Mon–Fri &bull; Shift: 4:00 PM – 2:00 AM IST &bull; Daily quota: 15 connections/person</p>
+  </div>
+</div>
+
+{# ── Tab navigation ── #}
+<ul class="nav nav-tabs mb-4">
+  <li class="nav-item">
+    <a class="nav-link fw-medium {% if view=='daily' %}active{% endif %}"
+       href="{{ url_for('manager_reports', view='daily', date=report_date.isoformat()) }}">
+      <i class="bi bi-calendar-day me-1"></i>Daily
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link fw-medium {% if view=='weekly' %}active{% endif %}"
+       href="{{ url_for('manager_reports', view='weekly', week_offset=week_offset) }}">
+      <i class="bi bi-calendar-week me-1"></i>Weekly
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link fw-medium {% if view=='monthly' %}active{% endif %}"
+       href="{{ url_for('manager_reports', view='monthly', month_offset=month_offset) }}">
+      <i class="bi bi-calendar-month me-1"></i>Monthly
+    </a>
+  </li>
+</ul>
+
+
+{# ══════════════════════════════════════════════════════════════════════════ #}
+{# DAILY VIEW                                                                #}
+{# ══════════════════════════════════════════════════════════════════════════ #}
+{% if view == 'daily' %}
+
+<div class="d-flex align-items-center gap-2 mb-4 flex-wrap">
+  <a href="{{ url_for('manager_reports', view='daily', date=prev_date) }}"
+     class="btn btn-outline-secondary btn-sm"><i class="bi bi-chevron-left"></i></a>
+
+  <h6 class="fw-bold mb-0 mx-1">
+    {{ report_date.strftime('%A, %B') }} {{ report_date.day }}, {{ report_date.year }}
+  </h6>
+
+  {% if can_go_next %}
+  <a href="{{ url_for('manager_reports', view='daily', date=next_date) }}"
+     class="btn btn-outline-secondary btn-sm"><i class="bi bi-chevron-right"></i></a>
+  {% else %}
+  <button class="btn btn-outline-secondary btn-sm" disabled><i class="bi bi-chevron-right"></i></button>
+  {% endif %}
+
+  {% if report_date != today_utc %}
+  <a href="{{ url_for('manager_reports', view='daily') }}"
+     class="btn btn-outline-primary btn-sm ms-1">Today</a>
+  {% endif %}
+
+  <span class="badge ms-1 {% if not is_weekend %}bg-success{% else %}bg-secondary{% endif %}">
+    {% if not is_weekend %}Working Day{% else %}Weekend{% endif %}
+  </span>
+</div>
+
+{% if is_weekend %}
+<div class="card p-5 text-center text-muted">
+  <i class="bi bi-calendar-x fs-2 mb-2 d-block"></i>
+  <p class="fw-medium mb-1">No shift on {{ report_date.strftime('%A') }}s</p>
+  <p class="mb-0 small">Team works Monday – Friday. Use the ← arrow to view the last working day.</p>
+</div>
+
+{% elif not daily_data %}
+<div class="card p-4 text-center text-muted">
+  <p class="mb-0">No data available for this date.</p>
+</div>
+
+{% else %}
+{% set total_sent   = daily_data | sum(attribute='sent') %}
+{% set total_target = daily_limit * (daily_data | length) %}
+{% set team_pct     = (total_sent / total_target * 100) | int %}
+
+{# Summary stat cards #}
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-3">
+    <div class="stat-card">
+      <div class="stat-val">{{ total_sent }}</div>
+      <div class="stat-lbl">Team Sent</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card">
+      <div class="stat-val" style="color:#888">{{ total_target }}</div>
+      <div class="stat-lbl">Team Target</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card">
+      <div class="stat-val" style="color:{% if team_pct >= 80 %}#057642{% elif team_pct >= 50 %}#e7a33e{% else %}#b24020{% endif %}">
+        {{ team_pct }}%
+      </div>
+      <div class="stat-lbl">Completion</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card">
+      <div class="stat-val" style="color:#b24020">{{ total_target - total_sent }}</div>
+      <div class="stat-lbl">Remaining</div>
+    </div>
+  </div>
+</div>
+
+{# Per-person quota cards #}
+<div class="row g-3 mb-4">
+  {% for p in daily_data %}
+  {% set pct = (p.sent / daily_limit * 100) | int %}
+  <div class="col-12 col-md-4">
+    <div class="card p-3">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <h6 class="fw-bold mb-0">{{ p.name }}</h6>
+        <span class="fw-bold fs-5 {% if pct >= 100 %}text-success{% elif pct >= 60 %}text-warning{% else %}text-danger{% endif %}">
+          {{ p.sent }}<span class="fs-6 text-muted fw-normal">/{{ daily_limit }}</span>
+        </span>
+      </div>
+      <div class="progress mb-2" style="height:9px; border-radius:5px;">
+        <div class="progress-bar {% if pct >= 100 %}bg-success{% elif pct >= 60 %}bg-warning{% else %}bg-danger{% endif %}"
+             style="width:{{ pct }}%;"></div>
+      </div>
+      <div class="d-flex justify-content-between align-items-center">
+        <small class="text-muted">{{ pct }}% of daily quota</small>
+        {% if pct >= 100 %}
+        <small class="text-success fw-medium"><i class="bi bi-check-circle me-1"></i>Full quota!</small>
+        {% elif p.queued == 0 %}
+        <small class="text-muted">No queue built yet</small>
+        {% else %}
+        <small class="text-muted">{{ daily_limit - p.sent }} left</small>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+{# Horizontal bar chart #}
+<div class="card p-4">
+  <h6 class="fw-bold mb-3"><i class="bi bi-bar-chart-horizontal me-2 text-primary"></i>Quota Progress vs {{ daily_limit }}/day target</h6>
+  <canvas id="dailyChart" height="80"></canvas>
+</div>
+{% endif %}{# end not is_weekend #}
+
+
+{# ══════════════════════════════════════════════════════════════════════════ #}
+{# WEEKLY VIEW                                                               #}
+{# ══════════════════════════════════════════════════════════════════════════ #}
+{% elif view == 'weekly' %}
+
+<div class="d-flex align-items-center gap-2 mb-4 flex-wrap">
+  <a href="{{ url_for('manager_reports', view='weekly', week_offset=week_offset-1) }}"
+     class="btn btn-outline-secondary btn-sm"><i class="bi bi-chevron-left"></i></a>
+
+  <h6 class="fw-bold mb-0 mx-1">
+    {{ weekly_data.week_monday.strftime('%b') }} {{ weekly_data.week_monday.day }}
+    &ndash;
+    {{ weekly_data.week_friday.strftime('%b') }} {{ weekly_data.week_friday.day }},
+    {{ weekly_data.week_friday.year }}
+  </h6>
+
+  {% if week_offset < 0 %}
+  <a href="{{ url_for('manager_reports', view='weekly', week_offset=week_offset+1) }}"
+     class="btn btn-outline-secondary btn-sm"><i class="bi bi-chevron-right"></i></a>
+  {% else %}
+  <button class="btn btn-outline-secondary btn-sm" disabled><i class="bi bi-chevron-right"></i></button>
+  {% endif %}
+
+  {% if week_offset != 0 %}
+  <a href="{{ url_for('manager_reports', view='weekly') }}"
+     class="btn btn-outline-primary btn-sm ms-1">This Week</a>
+  {% endif %}
+</div>
+
+{# Weekly summary stats #}
+{% set colors = ['#0a66c2','#057642','#e7a33e'] %}
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-3">
+    <div class="stat-card">
+      <div class="stat-val">{{ weekly_data.team_total }}</div>
+      <div class="stat-lbl">Week Total</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card">
+      <div class="stat-val" style="color:#888">{{ weekly_data.max_per_day * 5 }}</div>
+      <div class="stat-lbl">Week Target</div>
+    </div>
+  </div>
+  {% for p in weekly_data.persons %}
+  <div class="col-6 col-md-3">
+    <div class="stat-card">
+      <div class="stat-val" style="color:{{ colors[loop.index0 % 3] }}">{{ p.total }}</div>
+      <div class="stat-lbl">{{ p.name }}</div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+{# Day-by-day matrix #}
+<div class="card mb-4">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th class="ps-4">Person</th>
+          {% for label in weekly_data.day_labels %}
+          <th class="text-center small">{{ label }}</th>
+          {% endfor %}
+          <th class="text-center fw-bold">Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in weekly_data.persons %}
+        <tr>
+          <td class="ps-4 fw-medium">{{ p.name }}</td>
+          {% for sent in p.daily %}
+          <td class="text-center">
+            {% if sent is none %}
+            <span class="text-muted">—</span>
+            {% elif sent >= 15 %}
+            <span class="badge bg-success px-2">{{ sent }}</span>
+            {% elif sent >= 10 %}
+            <span class="fw-medium">{{ sent }}</span>
+            {% elif sent > 0 %}
+            <span class="text-warning fw-medium">{{ sent }}</span>
+            {% else %}
+            <span class="text-danger small">0</span>
+            {% endif %}
+          </td>
+          {% endfor %}
+          <td class="text-center fw-bold">{{ p.total }}</td>
+        </tr>
+        {% endfor %}
+        <tr class="table-light fw-bold">
+          <td class="ps-4">Team</td>
+          {% for t in weekly_data.team_daily %}
+          <td class="text-center">{{ t if t is not none else '—' }}</td>
+          {% endfor %}
+          <td class="text-center">{{ weekly_data.team_total }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card p-4">
+  <h6 class="fw-bold mb-3"><i class="bi bi-bar-chart me-2 text-primary"></i>Daily Breakdown</h6>
+  {% if weekly_data.chart_data.datasets %}
+  <canvas id="weeklyChart" height="100"></canvas>
+  {% else %}
+  <p class="text-center text-muted py-3 mb-0">No activity recorded for this week yet.</p>
+  {% endif %}
+</div>
+
+
+{# ══════════════════════════════════════════════════════════════════════════ #}
+{# MONTHLY VIEW                                                              #}
+{# ══════════════════════════════════════════════════════════════════════════ #}
+{% elif view == 'monthly' %}
+
+<div class="d-flex align-items-center gap-2 mb-4 flex-wrap">
+  <a href="{{ url_for('manager_reports', view='monthly', month_offset=month_offset-1) }}"
+     class="btn btn-outline-secondary btn-sm"><i class="bi bi-chevron-left"></i></a>
+
+  <h6 class="fw-bold mb-0 mx-1">{{ monthly_data.month_name }}</h6>
+
+  {% if month_offset < 0 %}
+  <a href="{{ url_for('manager_reports', view='monthly', month_offset=month_offset+1) }}"
+     class="btn btn-outline-secondary btn-sm"><i class="bi bi-chevron-right"></i></a>
+  {% else %}
+  <button class="btn btn-outline-secondary btn-sm" disabled><i class="bi bi-chevron-right"></i></button>
+  {% endif %}
+
+  {% if month_offset != 0 %}
+  <a href="{{ url_for('manager_reports', view='monthly') }}"
+     class="btn btn-outline-primary btn-sm ms-1">This Month</a>
+  {% endif %}
+
+  <span class="text-muted small ms-2">
+    {{ monthly_data.working_days_total }} working days &bull; {{ monthly_data.past_days }} elapsed
+  </span>
+</div>
+
+{# Per-person summary cards with progress toward monthly target #}
+<div class="row g-3 mb-4">
+  {% for p in monthly_data.persons %}
+  <div class="col-12 col-md-4">
+    <div class="card p-3">
+      <div class="d-flex justify-content-between align-items-start mb-2">
+        <h6 class="fw-bold mb-0">{{ p.name }}</h6>
+        <span class="fw-bold fs-5">{{ p.total }}</span>
+      </div>
+      <div class="progress mb-2" style="height:9px; border-radius:5px;">
+        <div class="progress-bar" style="width:{{ p.pct }}%; background:#0a66c2;"></div>
+      </div>
+      <div class="d-flex justify-content-between">
+        <small class="text-muted">Avg {{ p.avg }}/day</small>
+        <small class="text-muted">{{ p.pct }}% of {{ p.max_possible }} target</small>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+{# Week-by-week breakdown #}
+<div class="card mb-4">
+  <div class="px-4 pt-3 pb-1">
+    <h6 class="fw-bold mb-0">Week-by-Week Breakdown</h6>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th class="ps-4">Week</th>
+          {% for p in monthly_data.persons %}
+          <th class="text-center">{{ p.name }}</th>
+          {% endfor %}
+          <th class="text-center fw-bold">Team</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for w in monthly_data.weeks %}
+        <tr class="{% if w.is_future %}text-muted{% endif %}">
+          <td class="ps-4">
+            {{ w.label }}
+            {% if w.is_partial %}
+            <span class="badge bg-warning text-dark ms-1" style="font-size:.7rem;">In progress</span>
+            {% endif %}
+          </td>
+          {% for p in monthly_data.persons %}
+          <td class="text-center">
+            {% if w.is_future %}
+            <span class="text-muted">—</span>
+            {% else %}
+            {{ w.totals.get(p.name, 0) }}
+            {% endif %}
+          </td>
+          {% endfor %}
+          <td class="text-center fw-bold">
+            {% if w.is_future %}<span class="text-muted">—</span>{% else %}{{ w.team }}{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot class="table-light fw-bold border-top">
+        <tr>
+          <td class="ps-4">Month Total</td>
+          {% for p in monthly_data.persons %}
+          <td class="text-center">{{ p.total }}</td>
+          {% endfor %}
+          <td class="text-center">{{ monthly_data.persons | sum(attribute='total') }}</td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+</div>
+
+{# Cumulative line chart #}
+<div class="card p-4">
+  <h6 class="fw-bold mb-1"><i class="bi bi-graph-up me-2 text-primary"></i>Cumulative Connections — {{ monthly_data.month_name }}</h6>
+  <p class="text-muted small mb-3">Running total of connections sent per person (working days only)</p>
+  {% if monthly_data.chart_data.datasets %}
+  <canvas id="monthlyChart" height="100"></canvas>
+  {% else %}
+  <p class="text-center text-muted py-3 mb-0">No activity recorded yet for {{ monthly_data.month_name }}.</p>
+  {% endif %}
+</div>
+
+{% endif %}{# end view #}
+
+{% endblock %}
+
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+{% if view == 'daily' and daily_data %}
+new Chart(document.getElementById('dailyChart'), {
+  type: 'bar',
+  data: {
+    labels: {{ daily_data | map(attribute='name') | list | tojson }},
+    datasets: [{
+      label: 'Connections Sent',
+      data:   {{ daily_data | map(attribute='sent') | list | tojson }},
+      backgroundColor: ['#0a66c2', '#057642', '#e7a33e'],
+      borderRadius: 5,
+      barThickness: 32,
+    }]
+  },
+  options: {
+    indexAxis: 'y',
+    responsive: true,
+    plugins: { legend: { display: false } },
+    scales: {
+      x: {
+        max: {{ daily_limit }},
+        beginAtZero: true,
+        ticks: { stepSize: 3 },
+        grid: { color: 'rgba(0,0,0,.05)' }
+      },
+      y: { grid: { display: false } }
+    }
+  }
+});
+{% endif %}
+
+{% if view == 'weekly' and weekly_data.chart_data.datasets %}
+new Chart(document.getElementById('weeklyChart'), {
+  type: 'bar',
+  data: {{ weekly_data.chart_data | tojson }},
+  options: {
+    responsive: true,
+    plugins: { legend: { position: 'top' } },
+    scales: {
+      x: { grid: { display: false } },
+      y: { beginAtZero: true, ticks: { stepSize: 1 }, grid: { color: 'rgba(0,0,0,.05)' } }
+    }
+  }
+});
+{% endif %}
+
+{% if view == 'monthly' and monthly_data.chart_data.datasets %}
+new Chart(document.getElementById('monthlyChart'), {
+  type: 'line',
+  data: {{ monthly_data.chart_data | tojson }},
+  options: {
+    responsive: true,
+    plugins: { legend: { position: 'top' } },
+    scales: {
+      x: { grid: { display: false }, ticks: { maxTicksLimit: 10 } },
+      y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,.05)' } }
+    }
+  }
+});
+{% endif %}
+</script>
+{% endblock %}

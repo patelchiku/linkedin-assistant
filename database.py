@@ -232,7 +232,11 @@ def get_todays_queue(user_id):
 def build_todays_queue(user_id, daily_limit=15):
     from templates import generate_connection_message
 
-    today = date.today().isoformat()
+    today_date = date.today()
+    if today_date.weekday() >= 5:   # Saturday=5, Sunday=6 — no queue on weekends
+        return 0
+
+    today = today_date.isoformat()
     conn = get_conn()
     c = conn.cursor()
 
@@ -407,6 +411,50 @@ def get_team_today_stats():
     rows = [_row_to_dict(c, r) for r in c.fetchall()]
     conn.close()
     return rows
+
+
+def get_daily_report(date_str):
+    """Per-person sent/queued counts for a specific shift date."""
+    conn = get_conn()
+    c = conn.cursor()
+    c.execute("""
+        SELECT u.id, u.name,
+               COALESCE(SUM(CASE WHEN q.done = 1 THEN 1 ELSE 0 END), 0) AS sent,
+               COALESCE(COUNT(q.id), 0) AS queued
+        FROM users u
+        LEFT JOIN queue q ON q.user_id = u.id AND q.queued_date = %s
+        WHERE u.role = 'salesperson'
+        GROUP BY u.id, u.name
+        ORDER BY u.name
+    """, (date_str,))
+    rows = [_row_to_dict(c, r) for r in c.fetchall()]
+    conn.close()
+    return rows
+
+
+def get_period_stats(start_date_str, end_date_str):
+    """
+    Returns list of (name, date_str, sent) for every working day in the range.
+    Uses generate_series so every Mon–Fri has a row even if sent=0.
+    """
+    conn = get_conn()
+    c = conn.cursor()
+    c.execute("""
+        SELECT u.name,
+               dates.d::TEXT AS queued_date,
+               COALESCE(SUM(CASE WHEN q.done = 1 THEN 1 ELSE 0 END), 0) AS sent
+        FROM users u
+        CROSS JOIN generate_series(%s::date, %s::date, '1 day'::interval) AS dates(d)
+        LEFT JOIN queue q
+               ON q.user_id = u.id AND q.queued_date = dates.d::date
+        WHERE u.role = 'salesperson'
+          AND EXTRACT(DOW FROM dates.d) BETWEEN 1 AND 5
+        GROUP BY u.name, dates.d
+        ORDER BY u.name, dates.d
+    """, (start_date_str, end_date_str))
+    rows = c.fetchall()
+    conn.close()
+    return rows  # [(name, date_str, sent), ...]
 
 
 def get_team_week_chart_data(days=7):

@@ -4,9 +4,17 @@
 <div class="d-flex justify-content-between align-items-center mb-3">
   <div>
     <h5 class="fw-bold mb-0">Today's Connection Queue</h5>
-    <p class="text-muted small mb-0">{{ now.strftime('%A, %B %-d %Y') }} &bull; Daily limit: 15 requests</p>
+    <p class="text-muted small mb-0">{{ now.strftime('%A, %B ') }}{{ now.day }} {{ now.year }} &bull; Mon–Fri &bull; 4:00 PM – 2:00 AM IST &bull; Limit: 15/day</p>
   </div>
 </div>
+
+{% if is_weekend %}
+<div class="card p-5 text-center" style="background:#f8f9fa;">
+  <i class="bi bi-sun fs-1 mb-3 d-block" style="color:#e7a33e;"></i>
+  <h5 class="fw-bold mb-1">It's the weekend!</h5>
+  <p class="text-muted mb-0">No connection queue runs on Saturday or Sunday.<br>Queue resumes Monday at 4:00 PM IST. Enjoy your break!</p>
+</div>
+{% else %}
 
 <div class="row g-3 mb-4">
   <div class="col-6 col-md-3">
@@ -104,5 +112,7 @@
     <li>Click <strong>Send</strong> — then mark as Sent above</li>
   </ol>
 </div>
+
+{% endif %}{# end is_weekend #}
 
 {% endblock %}

@@ -65,6 +65,11 @@
             <i class="bi bi-cloud-upload me-1"></i>Upload Contacts
           </a>
         </li>
+        <li class="nav-item">
+          <a class="nav-link {% if request.endpoint=='manager_reports' %}active{% endif %}" href="{{ url_for('manager_reports') }}">
+            <i class="bi bi-file-earmark-bar-graph me-1"></i>Reports
+          </a>
+        </li>
         {% endif %}
       </ul>
 

@@ -1,6 +1,7 @@
 import io
 import csv
-from datetime import datetime
+import calendar as cal_module
+from datetime import datetime, date, timedelta
 from functools import wraps
 
 import pandas as pd
@@ -14,6 +15,7 @@ from database import (
     delete_notification, update_notification_message, get_stats,
     verify_login, get_user_by_id,
     get_team_today_stats, get_team_week_chart_data,
+    get_daily_report, get_period_stats,
 )
 from templates import generate_event_message
 
@@ -91,10 +93,12 @@ def logout():
 @salesperson_only
 def today():
     uid = session['user_id']
+    is_weekend = datetime.now().weekday() >= 5
     build_todays_queue(uid, 15)
     queue = get_todays_queue(uid)
     stats = get_stats(uid)
-    return render_template('today.html', queue=queue, stats=stats, now=datetime.now())
+    return render_template('today.html', queue=queue, stats=stats,
+                           now=datetime.now(), is_weekend=is_weekend)
 
 
 @app.route('/mark-sent', methods=['POST'])
@@ -221,6 +225,204 @@ def manager_user_detail(uid):
                            queue=queue,
                            stats=stats,
                            now=datetime.now())
+
+
+# ── Report helpers ────────────────────────────────────────────────────────────
+
+DAILY_LIMIT = 15
+_PERSON_COLORS = {'Aaryan': '#0a66c2', 'Palak': '#057642', 'Piyush': '#e7a33e'}
+
+
+def _prev_working_day(d):
+    d -= timedelta(days=1)
+    while d.weekday() >= 5:
+        d -= timedelta(days=1)
+    return d
+
+
+def _next_working_day(d):
+    d += timedelta(days=1)
+    while d.weekday() >= 5:
+        d += timedelta(days=1)
+    return d
+
+
+def _build_weekly_data(week_monday, week_friday, today_utc):
+    days = [week_monday + timedelta(days=i) for i in range(5)]
+    raw = get_period_stats(week_monday.isoformat(), week_friday.isoformat())
+
+    by_person = {}
+    for name, date_str, sent in raw:
+        by_person.setdefault(name, {})[date_str] = sent
+
+    persons = []
+    for name in sorted(by_person):
+        daily = [
+            by_person[name].get(d.isoformat(), 0) if d <= today_utc else None
+            for d in days
+        ]
+        persons.append({
+            'name': name,
+            'daily': daily,
+            'total': sum(s for s in daily if s is not None),
+        })
+
+    team_daily = [
+        sum(p['daily'][i] or 0 for p in persons) if days[i] <= today_utc else None
+        for i in range(5)
+    ]
+
+    chart_datasets = [{
+        'label': p['name'],
+        'data': [s if s is not None else 0 for s in p['daily']],
+        'backgroundColor': _PERSON_COLORS.get(p['name'], '#888'),
+        'borderRadius': 4,
+    } for p in persons]
+
+    return {
+        'week_monday': week_monday,
+        'week_friday': week_friday,
+        'days': days,
+        'day_labels': [d.strftime('%a, %b ') + str(d.day) for d in days],
+        'persons': persons,
+        'team_daily': team_daily,
+        'team_total': sum(t or 0 for t in team_daily),
+        'max_per_day': DAILY_LIMIT * len(persons),
+        'chart_data': {
+            'labels': [d.strftime('%a ') + str(d.day) for d in days],
+            'datasets': chart_datasets,
+        },
+    }
+
+
+def _build_monthly_data(year, month, today_utc):
+    first_day = date(year, month, 1)
+    last_day = date(year, month, cal_module.monthrange(year, month)[1])
+    raw = get_period_stats(first_day.isoformat(), last_day.isoformat())
+
+    by_person = {}
+    for name, date_str, sent in raw:
+        by_person.setdefault(name, {})[date_str] = sent
+
+    # All working days in the month
+    working_days = [
+        first_day + timedelta(days=i)
+        for i in range((last_day - first_day).days + 1)
+        if (first_day + timedelta(days=i)).weekday() < 5
+    ]
+    past_days = [d for d in working_days if d <= today_utc]
+
+    # Group into calendar weeks
+    weeks = []
+    for d in working_days:
+        week_label = 'Week of ' + (d - timedelta(days=d.weekday())).strftime('%b ') + \
+                     str((d - timedelta(days=d.weekday())).day)
+        if not weeks or weeks[-1]['label'] != week_label:
+            weeks.append({'label': week_label, 'days': [], 'totals': {}, 'team': 0})
+        weeks[-1]['days'].append(d)
+
+    for w in weeks:
+        for d in w['days']:
+            ds = d.isoformat()
+            for name in by_person:
+                w['totals'][name] = w['totals'].get(name, 0) + by_person[name].get(ds, 0)
+        w['team'] = sum(w['totals'].values())
+        w['is_future'] = all(d > today_utc for d in w['days'])
+        w['is_partial'] = not w['is_future'] and any(d > today_utc for d in w['days'])
+
+    # Per-person summary
+    persons = []
+    for name in sorted(by_person):
+        total = sum(by_person[name].get(d.isoformat(), 0) for d in past_days)
+        max_possible = DAILY_LIMIT * len(working_days)
+        days_active = sum(1 for d in past_days if by_person[name].get(d.isoformat(), 0) > 0)
+        avg = round(total / max(len(past_days), 1), 1)
+        persons.append({
+            'name': name,
+            'total': total,
+            'avg': avg,
+            'days_active': days_active,
+            'max_possible': max_possible,
+            'pct': min(round(total / max(max_possible, 1) * 100), 100),
+        })
+
+    # Cumulative line chart
+    chart_labels = [d.strftime('%b ') + str(d.day) for d in past_days]
+    chart_datasets = []
+    for name in sorted(by_person):
+        running, data = 0, []
+        for d in past_days:
+            running += by_person[name].get(d.isoformat(), 0)
+            data.append(running)
+        chart_datasets.append({
+            'label': name,
+            'data': data,
+            'borderColor': _PERSON_COLORS.get(name, '#888'),
+            'backgroundColor': 'transparent',
+            'tension': 0.3,
+            'pointRadius': 2,
+        })
+
+    return {
+        'month_name': first_day.strftime('%B %Y'),
+        'year': year, 'month': month,
+        'working_days_total': len(working_days),
+        'past_days': len(past_days),
+        'weeks': weeks,
+        'persons': persons,
+        'chart_data': {'labels': chart_labels, 'datasets': chart_datasets},
+    }
+
+
+@app.route('/manager/reports')
+@manager_only
+def manager_reports():
+    today_utc = date.today()
+    view = request.args.get('view', 'daily')
+
+    # ── Daily ──
+    date_str = request.args.get('date', today_utc.isoformat())
+    try:
+        report_date = date.fromisoformat(date_str)
+    except ValueError:
+        report_date = today_utc
+
+    is_weekend = report_date.weekday() >= 5
+    prev_date = _prev_working_day(report_date)
+    next_date = _next_working_day(report_date)
+    can_go_next = next_date <= today_utc
+
+    daily_data = get_daily_report(report_date.isoformat()) if not is_weekend else []
+
+    # ── Weekly ──
+    week_offset = int(request.args.get('week_offset', 0))
+    this_monday = today_utc - timedelta(days=today_utc.weekday())
+    week_monday = this_monday + timedelta(weeks=week_offset)
+    week_friday = week_monday + timedelta(days=4)
+    weekly_data = _build_weekly_data(week_monday, week_friday, today_utc)
+
+    # ── Monthly ──
+    month_offset = int(request.args.get('month_offset', 0))
+    # Compute target year/month
+    total_months = today_utc.year * 12 + (today_utc.month - 1) + month_offset
+    target_year = total_months // 12
+    target_month = total_months % 12 + 1
+    monthly_data = _build_monthly_data(target_year, target_month, today_utc)
+
+    return render_template('manager_reports.html',
+                           view=view,
+                           today_utc=today_utc,
+                           report_date=report_date,
+                           is_weekend=is_weekend,
+                           prev_date=prev_date.isoformat(),
+                           next_date=next_date.isoformat(),
+                           can_go_next=can_go_next,
+                           daily_data=daily_data,
+                           daily_limit=DAILY_LIMIT,
+                           week_offset=week_offset,
+                           weekly_data=weekly_data,
+                           month_offset=month_offset,
+                           monthly_data=monthly_data)
 
 
 if __name__ == '__main__':
