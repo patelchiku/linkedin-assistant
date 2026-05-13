@@ -64,8 +64,9 @@ def init_db():
         )
     """)
 
-    # Migration-safe: add user_id to existing tables
+    # Migration-safe: add columns to existing tables
     c.execute("ALTER TABLE profiles ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id)")
+    c.execute("ALTER TABLE profiles ADD COLUMN IF NOT EXISTS source TEXT DEFAULT ''")
     c.execute("ALTER TABLE queue ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id)")
     c.execute("ALTER TABLE notifications ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id)")
 
@@ -123,13 +124,13 @@ def get_user_by_id(uid):
 
 # ── Profile operations ────────────────────────────────────────────────────────
 
-def add_profile(user_id, first_name, last_name, linkedin_url, note=""):
+def add_profile(user_id, first_name, last_name, linkedin_url, note="", source=""):
     conn = get_conn()
     try:
         c = conn.cursor()
         c.execute(
-            "INSERT INTO profiles (user_id, first_name, last_name, linkedin_url, note) VALUES (%s, %s, %s, %s, %s)",
-            (user_id, first_name.strip(), last_name.strip(), linkedin_url.strip(), note.strip()),
+            "INSERT INTO profiles (user_id, first_name, last_name, linkedin_url, note, source) VALUES (%s, %s, %s, %s, %s, %s)",
+            (user_id, first_name.strip(), last_name.strip(), linkedin_url.strip(), note.strip(), source.strip()),
         )
         conn.commit()
         return True, "Profile added."
@@ -140,15 +141,44 @@ def add_profile(user_id, first_name, last_name, linkedin_url, note=""):
         conn.close()
 
 
-def bulk_add_profiles(user_id, rows):
-    added, skipped = 0, 0
+def manager_distribute_contacts(rows):
+    """Round-robin distribute uploaded contacts across all salespersons."""
+    salespersons = get_all_salespersons()
+    if not salespersons:
+        return {}, len(rows)
+
+    n = len(salespersons)
+    assigned = {sp['name']: 0 for sp in salespersons}
+    skipped = 0
+    idx = 0
+
+    conn = get_conn()
     for r in rows:
-        ok, _ = add_profile(user_id, r["first_name"], r["last_name"], r["linkedin_url"], r.get("note", ""))
-        if ok:
-            added += 1
-        else:
+        first_name = str(r.get('first_name', '')).strip()
+        last_name  = str(r.get('last_name', '')).strip()
+        linkedin_url = str(r.get('linkedin_url', '')).strip()
+        source = str(r.get('source', '')).strip()
+
+        if not first_name or not linkedin_url:
             skipped += 1
-    return added, skipped
+            continue
+
+        sp = salespersons[idx % n]
+        try:
+            c = conn.cursor()
+            c.execute(
+                "INSERT INTO profiles (user_id, first_name, last_name, linkedin_url, source) VALUES (%s, %s, %s, %s, %s)",
+                (sp['id'], first_name, last_name, linkedin_url, source),
+            )
+            conn.commit()
+            assigned[sp['name']] += 1
+            idx += 1
+        except psycopg2.errors.UniqueViolation:
+            conn.rollback()
+            skipped += 1
+
+    conn.close()
+    return assigned, skipped
 
 
 def get_pending_profiles(user_id):
@@ -186,7 +216,7 @@ def get_todays_queue(user_id):
     c.execute(
         """
         SELECT q.id as queue_id, q.message, q.done, q.queued_date,
-               p.first_name, p.last_name, p.linkedin_url, p.note, p.id as profile_id
+               p.first_name, p.last_name, p.linkedin_url, p.note, p.source, p.id as profile_id
         FROM queue q
         JOIN profiles p ON q.profile_id = p.id
         WHERE q.queued_date = %s AND q.user_id = %s

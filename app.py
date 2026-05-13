@@ -9,7 +9,7 @@ from flask import (Flask, render_template, request, redirect,
 
 from database import (
     init_db, build_todays_queue, get_todays_queue, mark_queue_done,
-    add_profile, bulk_add_profiles, get_all_profiles, delete_profile,
+    add_profile, manager_distribute_contacts, get_all_profiles, delete_profile,
     add_notification, get_pending_notifications, mark_notification_done,
     delete_notification, update_notification_message, get_stats,
     verify_login, get_user_by_id,
@@ -105,51 +105,9 @@ def mark_sent():
     return redirect(url_for('today'))
 
 
-@app.route('/add-profiles')
-@salesperson_only
-def add_profiles():
-    return render_template('add_profiles.html')
 
 
-@app.route('/add-profile', methods=['POST'])
-@salesperson_only
-def add_profile_route():
-    ok, msg = add_profile(
-        session['user_id'],
-        request.form['first_name'],
-        request.form['last_name'],
-        request.form['linkedin_url'],
-        request.form.get('note', ''),
-    )
-    flash(msg, 'success' if ok else 'danger')
-    return redirect(url_for('add_profiles'))
-
-
-@app.route('/bulk-upload', methods=['POST'])
-@salesperson_only
-def bulk_upload():
-    file = request.files.get('csv_file')
-    if file and file.filename:
-        df = pd.read_csv(file)
-        df.columns = [c.lower().strip() for c in df.columns]
-        added, skipped = bulk_add_profiles(session['user_id'], df.to_dict('records'))
-        flash(f'Added {added} profiles. Skipped {skipped} duplicates.', 'success')
-    return redirect(url_for('add_profiles'))
-
-
-@app.route('/download-sample')
-def download_sample():
-    output = io.StringIO()
-    writer = csv.writer(output)
-    writer.writerow(['first_name', 'last_name', 'linkedin_url', 'note'])
-    writer.writerow(['Jane', 'Doe', 'https://linkedin.com/in/janedoe', 'Met at conference'])
-    writer.writerow(['John', 'Smith', 'https://linkedin.com/in/johnsmith', ''])
-    output.seek(0)
-    return Response(output.getvalue(), mimetype='text/csv',
-                    headers={'Content-Disposition': 'attachment; filename=sample_profiles.csv'})
-
-
-@app.route('/all-profiles')
+@app.route('/my-contacts')
 @salesperson_only
 def all_profiles():
     return render_template('all_profiles.html', profiles=get_all_profiles(session['user_id']))
@@ -208,6 +166,35 @@ def delete_notification_route():
 
 
 # ── Manager routes ────────────────────────────────────────────────────────────
+
+@app.route('/manager/upload', methods=['GET', 'POST'])
+@manager_only
+def manager_upload():
+    if request.method == 'POST':
+        file = request.files.get('csv_file')
+        if file and file.filename:
+            df = pd.read_csv(file)
+            df.columns = [c.lower().strip() for c in df.columns]
+            assigned, skipped = manager_distribute_contacts(df.to_dict('records'))
+            total = sum(assigned.values())
+            breakdown = ', '.join(f'{name} → {cnt}' for name, cnt in assigned.items())
+            flash(f'Distributed {total} contacts: {breakdown}. {skipped} duplicates skipped.', 'success')
+        return redirect(url_for('manager_upload'))
+    return render_template('manager_upload.html')
+
+
+@app.route('/manager/download-sample')
+@manager_only
+def manager_download_sample():
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(['first_name', 'last_name', 'linkedin_url', 'source'])
+    writer.writerow(['Jane', 'Doe', 'https://linkedin.com/in/janedoe', 'LinkedIn Search'])
+    writer.writerow(['John', 'Smith', 'https://linkedin.com/in/johnsmith', 'Conference - BLR 2025'])
+    writer.writerow(['Priya', 'Kumar', 'https://linkedin.com/in/priyakumar', 'Referral'])
+    output.seek(0)
+    return Response(output.getvalue(), mimetype='text/csv',
+                    headers={'Content-Disposition': 'attachment; filename=contacts_template.csv'})
 
 @app.route('/dashboard')
 @manager_only

@@ -62,7 +62,9 @@
       <div class="d-flex justify-content-between align-items-start mb-2">
         <div>
           <h6 class="fw-bold mb-0">{{ item.first_name }} {{ item.last_name }}</h6>
-          {% if item.note %}<small class="text-muted">{{ item.note }}</small>{% endif %}
+          {% if item.source or item.note %}
+          <small class="text-muted">{{ item.source or item.note }}</small>
+          {% endif %}
         </div>
         <div class="d-flex align-items-center gap-2">
           {% if item.done %}

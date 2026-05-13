@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="mb-4">
+  <h5 class="fw-bold mb-0">Upload Contacts</h5>
+  <p class="text-muted small mb-0">Contacts are distributed evenly across the team in round-robin order.</p>
+</div>
+
+<div class="row g-4">
+  <div class="col-12 col-md-7">
+    <div class="card p-4">
+      <h6 class="fw-bold mb-1"><i class="bi bi-cloud-upload me-1 text-primary"></i>Upload CSV</h6>
+      <p class="text-muted small mb-3">
+        Required columns: <code>first_name</code>, <code>last_name</code>, <code>linkedin_url</code><br>
+        Optional: <code>source</code> — e.g. LinkedIn Search, Conference, Referral
+      </p>
+      <form method="post" action="{{ url_for('manager_upload') }}" enctype="multipart/form-data">
+        <div class="mb-3">
+          <input type="file" name="csv_file" accept=".csv" class="form-control" required>
+        </div>
+        <button type="submit" class="btn btn-primary w-100 mb-2">
+          <i class="bi bi-upload me-1"></i>Upload &amp; Distribute
+        </button>
+      </form>
+      <a href="{{ url_for('manager_download_sample') }}" class="btn btn-outline-secondary w-100">
+        <i class="bi bi-download me-1"></i>Download Sample CSV
+      </a>
+    </div>
+  </div>
+
+  <div class="col-12 col-md-5">
+    <div class="card p-4 h-100">
+      <h6 class="fw-bold mb-3"><i class="bi bi-info-circle me-1 text-primary"></i>How it works</h6>
+      <ol class="text-muted mb-0" style="font-size:.9rem; line-height:1.8;">
+        <li>Prepare your CSV with the required columns</li>
+        <li>Upload — the system reads each row</li>
+        <li>Contacts are assigned <strong>round-robin</strong> across Aaryan, Palak, and Piyush</li>
+        <li>Duplicate LinkedIn URLs are automatically skipped</li>
+        <li>Each salesperson's daily queue (15/day) builds from their assigned contacts</li>
+      </ol>
+      <hr class="my-3">
+      <p class="text-muted small mb-0">
+        <i class="bi bi-shield-check me-1 text-success"></i>
+        LinkedIn safe limit: <strong>15 connection requests/day</strong> per person.
+        The system never queues more than this.
+      </p>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
