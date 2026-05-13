@@ -1,5 +1,6 @@
-.streamlit/secrets.toml
+.streamlit/
 data/
 __pycache__/
 *.pyc
 *.db
+.env
