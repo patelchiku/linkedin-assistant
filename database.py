@@ -1,3 +1,4 @@
+import os
 import psycopg2
 import psycopg2.extras
 import streamlit as st
@@ -5,9 +6,11 @@ from datetime import date
 
 
 def get_conn():
-    url = st.secrets["supabase"]["db_url"]
-    conn = psycopg2.connect(url)
-    return conn
+    try:
+        url = st.secrets["supabase"]["db_url"]
+    except Exception:
+        url = os.environ.get("DB_URL")
+    return psycopg2.connect(url)
 
 
 def init_db():
