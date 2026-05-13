@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="mb-4">
+  <a href="{{ url_for('manager_dashboard') }}" class="btn btn-outline-secondary btn-sm mb-3">
+    <i class="bi bi-arrow-left me-1"></i>Back to Dashboard
+  </a>
+  <h5 class="fw-bold mb-0">{{ viewed_user.name }}'s Activity</h5>
+  <p class="text-muted small mb-0">{{ now.strftime('%A, %B %-d %Y') }} &bull; Read-only view</p>
+</div>
+
+{# ── Stats ── #}
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-3">
+    <div class="stat-card">
+      <div class="stat-val">{{ stats.total }}</div>
+      <div class="stat-lbl">Total Profiles</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card">
+      <div class="stat-val" style="color:#057642">{{ stats.sent }}</div>
+      <div class="stat-lbl">All-Time Sent</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card">
+      <div class="stat-val" style="color:#b24020">{{ stats.pending }}</div>
+      <div class="stat-lbl">Pending Pipeline</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card">
+      <div class="stat-val">{{ stats.today_done }}/{{ stats.today_total }}</div>
+      <div class="stat-lbl">Today Done</div>
+    </div>
+  </div>
+</div>
+
+{% if stats.today_total > 0 %}
+<div class="mb-4">
+  <div class="progress" style="height:7px; border-radius:4px;">
+    <div class="progress-bar" style="width:{{ (stats.today_done / stats.today_total * 100)|int }}%; background:#0a66c2;"></div>
+  </div>
+  <small class="text-muted">{{ stats.today_done }} of {{ stats.today_total }} sent today</small>
+</div>
+{% endif %}
+
+{# ── Today's queue ── #}
+<h6 class="fw-bold mb-3">Today's Queue</h6>
+
+{% if not queue %}
+<div class="card p-4 text-center text-muted">
+  <i class="bi bi-inbox fs-2 mb-2 d-block"></i>
+  <p class="mb-0">No profiles queued for today.</p>
+</div>
+{% else %}
+<div class="row g-3">
+  {% for item in queue %}
+  <div class="col-12 col-lg-6">
+    <div class="card p-3 h-100 {% if item.done %}opacity-75{% endif %}">
+      <div class="d-flex justify-content-between align-items-start mb-2">
+        <div>
+          <h6 class="fw-bold mb-0">{{ item.first_name }} {{ item.last_name }}</h6>
+          {% if item.note %}<small class="text-muted">{{ item.note }}</small>{% endif %}
+        </div>
+        <div class="d-flex align-items-center gap-2">
+          {% if item.done %}
+          <span class="badge badge-sent d-flex align-items-center px-2">
+            <i class="bi bi-check2-circle me-1"></i>Sent
+          </span>
+          {% else %}
+          <span class="badge badge-pending d-flex align-items-center px-2">Pending</span>
+          {% endif %}
+          {% if item.linkedin_url %}
+          <a href="{{ item.linkedin_url }}" target="_blank" class="btn btn-outline-primary btn-sm">
+            <i class="bi bi-linkedin"></i>
+          </a>
+          {% endif %}
+        </div>
+      </div>
+      <div class="msg-box">{{ item.message }}</div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% endblock %}
